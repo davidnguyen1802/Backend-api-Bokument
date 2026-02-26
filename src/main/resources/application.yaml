@@ -1,0 +1,34 @@
+spring:
+  application:
+    name: backend-api
+
+  datasource:
+    url: jdbc:postgresql://aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres?sslmode=require
+    username: postgres.sxiyrycwruzxwpqehdmo
+    password: ZR4PEp5RzIYaTKV7
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    show-sql: true
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+server:
+  address: 0.0.0.0
+  compression:
+    enabled: false
+
+jwt:
+  secret: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+  expiration: 86400000
+
+
+# MinIO Configuration (Dùng chung cho cả Docker và Prod vì MinIO sẽ chạy trên localhost của container hoặc server)
+#minio:
+#  endpoint: http://localhost:9000
+#  access-key: minioadmin
+#  secret-key: minioadmin
+#  bucket: user-files
