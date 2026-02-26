@@ -4,7 +4,6 @@ import com.qldapm_L01.backend_api.Config.JwtUtil;
 import com.qldapm_L01.backend_api.Entity.User;
 import com.qldapm_L01.backend_api.Payload.Request.LoginRequest;
 import com.qldapm_L01.backend_api.Payload.Request.RegisterRequest;
-import com.qldapm_L01.backend_api.Payload.Response.AuthResponse;
 import com.qldapm_L01.backend_api.Repository.UserRepository;
 import com.qldapm_L01.backend_api.Service.AuthService;
 import lombok.RequiredArgsConstructor;
@@ -26,7 +25,7 @@ public class AuthServiceImp implements AuthService {
     private final UserDetailsService userDetailsService;
 
     @Override
-    public AuthResponse register(RegisterRequest request) {
+    public String register(RegisterRequest request) {
         if (userRepository.existsByUsername(request.getUsername())) {
             throw new RuntimeException("Username already exists");
         }
@@ -35,22 +34,14 @@ public class AuthServiceImp implements AuthService {
         user.setUsername(request.getUsername());
         user.setEmail(request.getEmail());
         user.setPassword(passwordEncoder.encode(request.getPassword()));
-
         userRepository.save(user);
 
         UserDetails userDetails = userDetailsService.loadUserByUsername(user.getUsername());
-        String token = jwtUtil.generateToken(userDetails);
-
-        return AuthResponse.builder()
-                .token(token)
-                .type("Bearer")
-                .username(user.getUsername())
-                .email(user.getEmail())
-                .build();
+        return jwtUtil.generateTokenForUser(user, userDetails);
     }
 
     @Override
-    public AuthResponse login(LoginRequest request) {
+    public String login(LoginRequest request) {
         authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(
                         request.getUsername(),
@@ -58,17 +49,10 @@ public class AuthServiceImp implements AuthService {
                 )
         );
 
-        UserDetails userDetails = userDetailsService.loadUserByUsername(request.getUsername());
-        String token = jwtUtil.generateToken(userDetails);
-
         User user = userRepository.findByUsername(request.getUsername())
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        return AuthResponse.builder()
-                .token(token)
-                .type("Bearer")
-                .username(user.getUsername())
-                .email(user.getEmail())
-                .build();
+        UserDetails userDetails = userDetailsService.loadUserByUsername(user.getUsername());
+        return jwtUtil.generateTokenForUser(user, userDetails);
     }
 }

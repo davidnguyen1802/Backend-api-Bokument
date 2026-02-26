@@ -2,7 +2,7 @@ package com.qldapm_L01.backend_api.Controller;
 
 import com.qldapm_L01.backend_api.Payload.Request.LoginRequest;
 import com.qldapm_L01.backend_api.Payload.Request.RegisterRequest;
-import com.qldapm_L01.backend_api.Payload.Response.AuthResponse;
+import com.qldapm_L01.backend_api.Payload.Response.BaseResponse;
 import com.qldapm_L01.backend_api.Service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -17,13 +17,22 @@ public class AuthController {
     private final AuthService authService;
 
     @PostMapping("/register")
-    public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
-        return ResponseEntity.ok(authService.register(request));
+    public ResponseEntity<?> register(@Valid @RequestBody RegisterRequest request) {
+        String token = authService.register(request);
+        BaseResponse response = new BaseResponse();
+        response.setStatusCode(200);
+        response.setMessage("Registration successful");
+        response.setData(token);
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
-        return ResponseEntity.ok(authService.login(request));
+    public ResponseEntity<?> login(@Valid @RequestBody LoginRequest request) {
+        String token = authService.login(request);
+        BaseResponse response = new BaseResponse();
+        response.setStatusCode(200);
+        response.setMessage("Login successful");
+        response.setData(token);
+        return ResponseEntity.ok(response);
     }
 }
-

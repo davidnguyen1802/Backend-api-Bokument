@@ -1,5 +1,6 @@
 package com.qldapm_L01.backend_api.Config;
 
+import com.qldapm_L01.backend_api.Entity.User;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
@@ -35,6 +36,16 @@ public class JwtUtil {
 
     public String generateToken(UserDetails userDetails) {
         return generateToken(new HashMap<>(), userDetails);
+    }
+
+    /**
+     * Generate token and embed user info (id, email) as extra claims.
+     */
+    public String generateTokenForUser(User user, UserDetails userDetails) {
+        Map<String, Object> extraClaims = new HashMap<>();
+        extraClaims.put("userId", user.getId());
+        extraClaims.put("email", user.getEmail());
+        return generateToken(extraClaims, userDetails);
     }
 
     public String generateToken(Map<String, Object> extraClaims, UserDetails userDetails) {
