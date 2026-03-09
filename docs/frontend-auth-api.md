@@ -12,7 +12,23 @@
 
 Backend sử dụng **Spring Boot + Spring Security + JWT (JSON Web Token)**.  
 Tất cả các API xác thực đều nằm dưới prefix `/api/auth`.  
-Sau khi đăng nhập hoặc đăng ký thành công, frontend nhận được một **JWT token** và cần lưu lại để gửi kèm trong các request cần xác thực.
+Mọi response (kể cả lỗi) đều trả về HTTP status `200 OK` với cấu trúc JSON thống nhất dạng:
+
+```json
+{
+  "statusCode": 200,
+  "message": "Registration successful",
+  "data": "jwt-token-or-other-data"
+}
+```
+
+Trong đó:
+
+- `statusCode`: mã trạng thái nghiệp vụ (200, 400, 401, 404, ...)  
+- `message`: mô tả kết quả xử lý (thành công / lỗi)  
+- `data`: dữ liệu trả về, với auth sẽ là **JWT token dạng String**
+
+Sau khi đăng nhập hoặc đăng ký thành công (`statusCode = 200`), frontend nhận được một **JWT token** trong field `data` và cần lưu lại để gửi kèm trong các request cần xác thực.
 
 ---
 
@@ -21,7 +37,7 @@ Sau khi đăng nhập hoặc đăng ký thành công, frontend nhận được m
 ```
 ┌─────────────┐         POST /api/auth/register hoặc /api/auth/login         ┌─────────────┐
 │   Frontend  │ ──────────────────────────────────────────────────────────► │   Backend   │
-│             │ ◄────────────────── { token, type, username, email } ──────── │             │
+│             │ ◄──────── { statusCode, message, data (JWT) } ───────────── │             │
 └─────────────┘                                                               └─────────────┘
        │
        │  Lưu token vào localStorage / sessionStorage / cookie
@@ -61,41 +77,49 @@ Sau khi đăng nhập hoặc đăng ký thành công, frontend nhận được m
 | `email`    | String | ✅ Yes   | Phải đúng định dạng email               |
 | `password` | String | ✅ Yes   | Không được để trống, tối thiểu 6 ký tự  |
 
-#### ✅ Response thành công — `200 OK`
+#### ✅ Response thành công — HTTP `200 OK`, `statusCode = 200`
 
 ```json
 {
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "type": "Bearer",
-  "username": "johndoe",
-  "email": "johndoe@example.com"
+  "statusCode": 200,
+  "message": "Registration successful",
+  "data": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 }
 ```
 
-| Field      | Type   | Mô tả                                      |
-|-----------|--------|---------------------------------------------|
-| `token`   | String | JWT token dùng để xác thực các request sau  |
-| `type`    | String | Luôn là `"Bearer"`                          |
-| `username`| String | Tên đăng nhập của người dùng                |
-| `email`   | String | Email của người dùng                        |
+| Field         | Type   | Mô tả                                      |
+|--------------|--------|---------------------------------------------|
+| `statusCode` | Number | 200 nếu đăng ký thành công                  |
+| `message`    | String | Thông báo `"Registration successful"`       |
+| `data`       | String | JWT token dùng để xác thực các request sau  |
 
 #### ❌ Response lỗi
 
-**Username đã tồn tại — `500 Internal Server Error`**
-```json
-{
-  "message": "Username already exists"
-}
-```
+> Lưu ý: HTTP status vẫn là `200 OK`, nhưng `statusCode` trong body sẽ khác `200`.
 
-**Validation thất bại — `400 Bad Request`**
-```json
-{
-  "username": "Username must be between 3 and 50 characters",
-  "email": "Email should be valid",
-  "password": "Password must be at least 6 characters"
-}
-```
+- **Username đã tồn tại**  
+
+  Khi username đã tồn tại, backend ném `RuntimeException("Username already exists")` và được xử lý chung:
+
+  ```json
+  {
+    "statusCode": 400,
+    "message": "Username already exists",
+    "data": null
+  }
+  ```
+
+- **Validation thất bại** (`@Valid + @Size/@Email/@NotBlank`)  
+
+  Các lỗi validation được gom thành 1 chuỗi message:
+
+  ```json
+  {
+    "statusCode": 400,
+    "message": "username: Username must be between 3 and 50 characters, email: Email should be valid, password: Password must be at least 6 characters",
+    "data": null
+  }
+  ```
 
 ---
 
@@ -121,47 +145,61 @@ Sau khi đăng nhập hoặc đăng ký thành công, frontend nhận được m
 | `username` | String | ✅ Yes   | Không được để trống      |
 | `password` | String | ✅ Yes   | Không được để trống      |
 
-#### ✅ Response thành công — `200 OK`
+#### ✅ Response thành công — HTTP `200 OK`, `statusCode = 200`
 
 ```json
 {
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "type": "Bearer",
-  "username": "johndoe",
-  "email": "johndoe@example.com"
+  "statusCode": 200,
+  "message": "Login successful",
+  "data": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 }
 ```
 
 #### ❌ Response lỗi
 
-**Sai username hoặc password — `401 Unauthorized`**
-```json
-{
-  "message": "Bad credentials"
-}
-```
+> HTTP status vẫn là `200 OK`, phân biệt lỗi theo `statusCode` trong body.
 
-**Validation thất bại — `400 Bad Request`**
-```json
-{
-  "username": "Username is required",
-  "password": "Password is required"
-}
-```
+- **Sai username hoặc password** (`BadCredentialsException`)  
+
+  ```json
+  {
+    "statusCode": 401,
+    "message": "Invalid username or password",
+    "data": null
+  }
+  ```
+
+- **User không tồn tại** (`RuntimeException("User not found")`)  
+
+  ```json
+  {
+    "statusCode": 400,
+    "message": "User not found",
+    "data": null
+  }
+  ```
+
+- **Validation thất bại** (`@NotBlank`)  
+
+  ```json
+  {
+    "statusCode": 400,
+    "message": "username: Username is required, password: Password is required",
+    "data": null
+  }
+  ```
 
 ---
 
 ## 💾 Hướng dẫn lưu token phía Frontend
 
-Sau khi đăng ký / đăng nhập thành công, frontend cần lưu JWT token để sử dụng cho các request tiếp theo.
+Sau khi đăng ký / đăng nhập thành công (`statusCode = 200`), frontend cần lấy JWT token từ field `data` để sử dụng cho các request tiếp theo.
 
 ### Ví dụ với JavaScript / TypeScript
 
 ```javascript
 // Lưu token vào localStorage
-localStorage.setItem('token', response.token);
-localStorage.setItem('username', response.username);
-localStorage.setItem('email', response.email);
+localStorage.setItem('token', response.data);
 
 // Đọc token
 const token = localStorage.getItem('token');
