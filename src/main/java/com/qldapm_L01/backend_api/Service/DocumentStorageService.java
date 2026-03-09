@@ -10,8 +10,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.CopyObjectRequest;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.MetadataDirective;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
@@ -19,6 +21,7 @@ import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignReques
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.Duration;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -70,6 +73,89 @@ public class DocumentStorageService {
                     .build());
             throw ex;
         }
+    }
+
+    @Transactional(readOnly = true)
+    public List<Document> getAllVisibleDocuments() {
+        return repository.findByVisibleTrueOrderByCreatedAtDesc();
+    }
+
+    @Transactional(readOnly = true)
+    public List<Document> getDocumentsByOwner(int ownerId) {
+        return repository.findByOwnerIdOrderByCreatedAtDesc(ownerId);
+    }
+
+    @Transactional
+    public Document toggleVisibility(int ownerId, UUID documentId, boolean visible) {
+        Document doc = repository.findByIdAndOwnerId(documentId, ownerId)
+                .orElseThrow(() -> new IllegalArgumentException("Document not found"));
+        doc.setVisible(visible);
+        return repository.save(doc);
+    }
+
+    @Transactional(readOnly = true)
+    public Document getDocument(int ownerId, UUID documentId) {
+        return repository.findByIdAndOwnerId(documentId, ownerId)
+                .orElseThrow(() -> new IllegalArgumentException("Document not found"));
+    }
+
+    @Transactional
+    public Document rename(int ownerId, UUID documentId, String newName) {
+        Document doc = repository.findByIdAndOwnerId(documentId, ownerId)
+                .orElseThrow(() -> new IllegalArgumentException("Document not found"));
+
+        if (newName == null || newName.isBlank()) {
+            throw new IllegalArgumentException("New name must not be empty");
+        }
+
+        // Giữ nguyên extension gốc
+        String originalExt = doc.getOriginalName().substring(doc.getOriginalName().lastIndexOf('.'));
+        String cleanName = newName.strip();
+        if (!cleanName.endsWith(originalExt)) {
+            cleanName = cleanName + originalExt;
+        }
+
+        doc.setOriginalName(cleanName);
+
+        // Cập nhật Content-Disposition trên S3
+        CopyObjectRequest copyReq = CopyObjectRequest.builder()
+                .sourceBucket(doc.getBucketName())
+                .sourceKey(doc.getObjectKey())
+                .destinationBucket(doc.getBucketName())
+                .destinationKey(doc.getObjectKey())
+                .contentDisposition("attachment; filename=\"" + cleanName + "\"")
+                .contentType(doc.getContentType())
+                .metadataDirective(MetadataDirective.REPLACE)
+                .build();
+        s3Client.copyObject(copyReq);
+
+        return repository.save(doc);
+    }
+
+    @Transactional
+    public Document replaceFile(int ownerId, UUID documentId, MultipartFile newFile) throws IOException {
+        Document doc = repository.findByIdAndOwnerId(documentId, ownerId)
+                .orElseThrow(() -> new IllegalArgumentException("Document not found"));
+
+        DocumentValidator.ValidatedDocument validated = validator.validate(newFile);
+
+        // Ghi đè file cũ trên S3 (cùng objectKey)
+        PutObjectRequest request = PutObjectRequest.builder()
+                .bucket(doc.getBucketName())
+                .key(doc.getObjectKey())
+                .contentType(validated.contentType())
+                .contentDisposition("attachment; filename=\"" + validated.originalName() + "\"")
+                .build();
+
+        try (InputStream inputStream = newFile.getInputStream()) {
+            s3Client.putObject(request, RequestBody.fromInputStream(inputStream, newFile.getSize()));
+        }
+
+        doc.setOriginalName(validated.originalName());
+        doc.setContentType(validated.contentType());
+        doc.setSize(validated.size());
+
+        return repository.save(doc);
     }
 
     @Transactional(readOnly = true)

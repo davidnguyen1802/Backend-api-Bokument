@@ -33,6 +33,9 @@ public class Document {
     @Column(nullable = false)
     private Long size;
 
+    @Column(nullable = false)
+    private boolean visible = true;
+
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 
