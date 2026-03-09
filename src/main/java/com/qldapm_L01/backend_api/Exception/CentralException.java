@@ -30,6 +30,15 @@ public class CentralException {
         return ResponseEntity.ok(response);
     }
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<?> handleIllegalArgumentException(IllegalArgumentException e) {
+        BaseResponse response = new BaseResponse();
+        response.setStatusCode(400);
+        response.setMessage(e.getMessage());
+        response.setData(null);
+        return ResponseEntity.ok(response);
+    }
+
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<?> handleRuntimeException(RuntimeException e) {
         BaseResponse response = new BaseResponse();
