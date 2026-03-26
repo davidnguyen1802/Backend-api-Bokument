@@ -6,6 +6,7 @@ import com.qldapm_L01.backend_api.Payload.Response.BaseResponse;
 import com.qldapm_L01.backend_api.Repository.UserRepository;
 import com.qldapm_L01.backend_api.Service.DocumentStorageService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -80,6 +81,32 @@ public class DocumentController {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new RuntimeException("User not found"));
         return user.getId();
+    }
+
+    @GetMapping("/{listAll}")
+    public ResponseEntity<?> getAllDocuments(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        Page<Document> docs = storageService.listAll(page, size);
+
+        BaseResponse response = new BaseResponse();
+        response.setStatusCode(200);
+        response.setMessage("Documents fetched successfully");
+        response.setData(Map.of(
+                "items", docs.getContent().stream().map(doc -> Map.of(
+                        "id", doc.getId(),
+                        "originalName", doc.getOriginalName(),
+                        "contentType", doc.getContentType(),
+                        "size", doc.getSize(),
+                        "createdAt", doc.getCreatedAt()
+                )).toList(),
+                "page", docs.getNumber(),
+                "size", docs.getSize(),
+                "totalItems", docs.getTotalElements(),
+                "totalPages", docs.getTotalPages()
+        ));
+        return ResponseEntity.ok(response);
     }
 }
 
