@@ -5,6 +5,9 @@ import com.qldapm_L01.backend_api.Repository.DocumentRepository;
 import com.qldapm_L01.backend_api.Util.DocumentValidator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -192,6 +195,12 @@ public class DocumentStorageService {
 
     private String buildObjectKey(int ownerId, String extension) {
         return "users/" + ownerId + "/" + UUID.randomUUID() + "." + extension;
+    }
+
+    @Transactional(readOnly = true)
+    public Page<Document> listAll (int page, int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        return repository.findAllByOrderByCreatedAtDesc(pageable);
     }
 }
 
