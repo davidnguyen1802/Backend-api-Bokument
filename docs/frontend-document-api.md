@@ -1,50 +1,68 @@
-# 📘 Frontend API Documentation — Document Management Module
+# Frontend API Documentation — Document Management Module
 
-> **Project:** QLDAPM  
-> **Base URL:** `http://localhost:8080`  
-> **Version:** 1.0.0  
-> **Date:** 2026-03-09  
+> **Project:** QLDAPM
+> **Base URL:** `http://localhost:8080`
+> **Version:** 2.0.0
+> **Date:** 2026-03-09
 > **Author:** Backend Team
 
 ---
 
-## 📌 Tổng quan
+## Tong quan
 
-Module quản lý tài liệu cho phép người dùng **upload**, **download** (qua signed URL), và **xóa** tài liệu.  
-Tài liệu được lưu trữ trên **Supabase Storage (S3-compatible)** và metadata lưu trong **PostgreSQL**.  
-Tất cả các API đều yêu cầu **JWT token** (xem [Authentication Module](./frontend-auth-api.md)).
+Module quan ly tai lieu cho phep nguoi dung **upload**, **xem danh sach**, **download** (qua signed URL), **doi ten**, **thay the file**, **an/hien**, va **xoa** tai lieu.
+Tai lieu duoc luu tru tren **Supabase Storage (S3-compatible)** va metadata luu trong **PostgreSQL**.
+Tat ca cac API deu yeu cau **JWT token** (xem [Authentication Module](./frontend-auth-api.md)).
+
+### Phan quyen
+
+| Hanh dong | Ai duoc phep |
+|-----------|-------------|
+| Xem tat ca tai lieu (`GET /api/documents`) | Moi user da dang nhap (chi thay tai lieu **visible**) |
+| Xem tai lieu cua minh (`GET /api/documents/my`) | Moi user da dang nhap (thay ca an lan hien) |
+| Xem chi tiet tai lieu (`GET /api/documents/{id}`) | Chi owner |
+| Upload tai lieu | Moi user da dang nhap |
+| Download tai lieu | Chi owner |
+| Doi ten tai lieu | Chi owner |
+| Thay the file tai lieu | Chi owner |
+| An/hien tai lieu | Chi owner |
+| Xoa tai lieu | Chi owner |
+
+### Tinh nang an tai lieu (visibility)
+
+- Moi tai lieu co truong `visible` (mac dinh `true` — cong khai)
+- Owner co the **an tai lieu** bang cach set `visible = false`
+- Tai lieu bi an **se khong hien** trong `GET /api/documents` (danh sach chung)
+- Tai lieu bi an **van hien** trong `GET /api/documents/my` (danh sach cua owner)
+- Owner van co the download/sua/xoa tai lieu bi an binh thuong
 
 ---
 
-## 🏗️ Kiến trúc tổng quan
+## Kien truc tong quan
 
 ```
-┌─────────────┐    POST /api/documents (multipart/form-data)    ┌─────────────┐     ┌──────────────┐
-│   Frontend  │ ──────────────────────────────────────────────► │   Backend   │ ──► │  Supabase S3 │
-│             │ ◄────────────── BaseResponse (metadata) ──────── │             │     │   Storage    │
-└─────────────┘                                                  └──────┬──────┘     └──────────────┘
-       │                                                                │
-       │  GET /api/documents/{id}/download-url                          │
-       │ ──────────────────────────────────────────────────────────────► │
-       │ ◄─────────── BaseResponse (signed URL, 15 phút) ───────────── │
-       │                                                                │
-       │  Mở signed URL trên trình duyệt → Tải file trực tiếp từ S3    │
-       └────────────────────────────────────────────────────────────────►│
+                          GET /api/documents (tat ca)
+                          GET /api/documents/my (cua toi)
++-----------+             POST /api/documents (upload)          +-----------+     +--------------+
+| Frontend  | --------------------------------------------------> | Backend  | --> | Supabase S3  |
+|           | <---- BaseResponse (metadata / list / url) -------- |          |     |   Storage    |
++-----------+             PUT /{id}/rename                       +-----+-----+     +--------------+
+                          PUT /{id}/replace (upload moi)               |
+                          DELETE /{id}                                 |
+                          GET /{id}/download-url --> signed URL -------+
 ```
 
 ---
 
-## 📡 API Endpoints
+## API Endpoints
 
-### Tất cả các endpoint đều cần header:
+### Header bat buoc
 
 ```
 Authorization: Bearer <token>
 ```
 
 ### Response chung — `BaseResponse`
-
-Tất cả API trả về cùng format:
 
 ```json
 {
@@ -54,40 +72,168 @@ Tất cả API trả về cùng format:
 }
 ```
 
-| Field        | Type    | Mô tả                                         |
+| Field        | Type    | Mo ta                                         |
 |-------------|---------|------------------------------------------------|
-| `statusCode` | int    | Mã trạng thái (200 = thành công, 400 = lỗi)   |
-| `message`    | String | Thông báo kết quả                              |
-| `data`       | Object | Dữ liệu trả về (hoặc `null` nếu không có)     |
+| `statusCode` | int    | Ma trang thai (200 = thanh cong, 400 = loi)   |
+| `message`    | String | Thong bao ket qua                              |
+| `data`       | Object | Du lieu tra ve (hoac `null` neu khong co)     |
 
 ---
 
-### 1. Upload tài liệu
+### 1. Lay tat ca tai lieu
 
-| Thông tin         | Chi tiết                                   |
+| Thong tin         | Chi tiet                                   |
+|------------------|---------------------------------------------|
+| **URL**          | `GET /api/documents`                        |
+| **Auth**         | Yeu cau Bearer token                        |
+| **Mo ta**        | Lay danh sach tat ca tai lieu **cong khai** (visible = true) |
+
+#### Response thanh cong — `200 OK`
+
+```json
+{
+  "statusCode": 200,
+  "message": "Documents retrieved successfully",
+  "data": [
+    {
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "originalName": "report.pdf",
+      "contentType": "application/pdf",
+      "size": 204800,
+      "ownerId": 1,
+      "createdAt": "2026-03-09T10:30:00Z"
+    },
+    {
+      "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+      "originalName": "proposal.docx",
+      "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "size": 102400,
+      "ownerId": 2,
+      "createdAt": "2026-03-08T14:20:00Z"
+    }
+  ]
+}
+```
+
+| Field trong moi item | Type   | Mo ta                            |
+|---------------------|--------|----------------------------------|
+| `id`                | UUID   | ID tai lieu                      |
+| `originalName`      | String | Ten file goc                     |
+| `contentType`       | String | MIME type                        |
+| `size`              | Long   | Kich thuoc file (bytes)          |
+| `ownerId`           | int    | ID cua nguoi upload              |
+| `createdAt`         | String | Thoi gian upload (ISO 8601)      |
+
+---
+
+### 2. Lay tai lieu cua toi
+
+| Thong tin         | Chi tiet                                         |
+|------------------|--------------------------------------------------|
+| **URL**          | `GET /api/documents/my`                           |
+| **Auth**         | Yeu cau Bearer token                              |
+| **Mo ta**        | Lay danh sach tai lieu cua user dang dang nhap (ca an lan hien) |
+
+#### Response thanh cong — `200 OK`
+
+```json
+{
+  "statusCode": 200,
+  "message": "Documents retrieved successfully",
+  "data": [
+    {
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "originalName": "report.pdf",
+      "contentType": "application/pdf",
+      "size": 204800,
+      "visible": true,
+      "createdAt": "2026-03-09T10:30:00Z"
+    },
+    {
+      "id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+      "originalName": "draft.docx",
+      "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "size": 51200,
+      "visible": false,
+      "createdAt": "2026-03-07T08:00:00Z"
+    }
+  ]
+}
+```
+
+> Luu y: Response co them truong `visible`. Tai lieu an (`visible: false`) chi hien o day, khong hien trong `GET /api/documents`.
+
+---
+
+### 3. Lay chi tiet 1 tai lieu
+
+| Thong tin         | Chi tiet                                   |
+|------------------|---------------------------------------------|
+| **URL**          | `GET /api/documents/{id}`                   |
+| **Auth**         | Yeu cau Bearer token                        |
+| **Mo ta**        | Chi owner moi xem duoc                      |
+
+#### Path Parameters
+
+| Field | Type | Required | Mo ta               |
+|-------|------|----------|----------------------|
+| `id`  | UUID | Yes      | ID cua tai lieu      |
+
+#### Response thanh cong — `200 OK`
+
+```json
+{
+  "statusCode": 200,
+  "message": "Document retrieved successfully",
+  "data": {
+    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "originalName": "report.pdf",
+    "contentType": "application/pdf",
+    "size": 204800,
+    "visible": true,
+    "createdAt": "2026-03-09T10:30:00Z"
+  }
+}
+```
+
+#### Response loi
+
+```json
+{
+  "statusCode": 400,
+  "message": "Document not found",
+  "data": null
+}
+```
+
+---
+
+### 4. Upload tai lieu
+
+| Thong tin         | Chi tiet                                   |
 |------------------|---------------------------------------------|
 | **URL**          | `POST /api/documents`                       |
-| **Auth**         | ✅ Yêu cầu Bearer token                    |
+| **Auth**         | Yeu cau Bearer token                        |
 | **Content-Type** | `multipart/form-data`                       |
 
-#### ➤ Request
+#### Request
 
-Gửi file dưới dạng `multipart/form-data` với key là `file`.
+Gui file duoi dang `multipart/form-data` voi key la `file`.
 
-| Field  | Type           | Required | Mô tả                                |
-|-------|----------------|----------|---------------------------------------|
-| `file` | MultipartFile | ✅ Yes   | File cần upload                       |
+| Field  | Type           | Required | Mo ta              |
+|-------|----------------|----------|--------------------|
+| `file` | MultipartFile | Yes      | File can upload     |
 
-#### ⚠️ Ràng buộc file (Validation)
+#### Rang buoc file (Validation)
 
-| Ràng buộc          | Giá trị                                          |
-|--------------------|--------------------------------------------------|
-| **Định dạng**       | Chỉ chấp nhận: `pdf`, `doc`, `docx`             |
-| **Kích thước tối đa** | 10 MB (10,485,760 bytes)                       |
-| **Content-Type**    | `application/pdf`, `application/msword`, `application/vnd.openxmlformats-officedocument.wordprocessingml.document` |
-| **Kiểm tra nội dung** | Backend xác minh magic bytes của file (chống đổi đuôi file) |
+| Rang buoc             | Gia tri                                          |
+|-----------------------|--------------------------------------------------|
+| **Dinh dang**         | Chi chap nhan: `pdf`, `doc`, `docx`              |
+| **Kich thuoc toi da** | 10 MB (10,485,760 bytes)                          |
+| **Content-Type**      | `application/pdf`, `application/msword`, `application/vnd.openxmlformats-officedocument.wordprocessingml.document` |
+| **Kiem tra noi dung** | Backend xac minh magic bytes cua file (chong doi duoi file) |
 
-#### ✅ Response thành công — `200 OK`
+#### Response thanh cong — `200 OK`
 
 ```json
 {
@@ -102,88 +248,51 @@ Gửi file dưới dạng `multipart/form-data` với key là `file`.
 }
 ```
 
-| Field trong `data` | Type   | Mô tả                                      |
-|-------------------|--------|----------------------------------------------|
-| `id`              | UUID   | ID của tài liệu (dùng cho download/delete)  |
-| `originalName`    | String | Tên file gốc                                |
-| `contentType`     | String | MIME type của file                           |
-| `size`            | Long   | Kích thước file (bytes)                      |
+#### Response loi
 
-#### ❌ Response lỗi
-
-**File rỗng:**
-```json
-{
-  "statusCode": 400,
-  "message": "File is empty",
-  "data": null
-}
-```
-
-**File quá lớn:**
-```json
-{
-  "statusCode": 400,
-  "message": "File exceeds max size",
-  "data": null
-}
-```
-
-**Sai định dạng:**
-```json
-{
-  "statusCode": 400,
-  "message": "Only pdf, doc, docx are allowed",
-  "data": null
-}
-```
-
-**Nội dung file không khớp đuôi file:**
-```json
-{
-  "statusCode": 400,
-  "message": "File content is not a valid PDF",
-  "data": null
-}
-```
+| Truong hop                    | message                              |
+|-------------------------------|--------------------------------------|
+| File rong                     | `"File is empty"`                    |
+| File qua lon (> 10MB)        | `"File exceeds max size"`            |
+| Sai dinh dang                 | `"Only pdf, doc, docx are allowed"`  |
+| Noi dung khong khop duoi file | `"File content is not a valid PDF"`  |
 
 ---
 
-### 2. Lấy URL tải file (Signed Download URL)
+### 5. Lay URL tai file (Signed Download URL)
 
-| Thông tin         | Chi tiết                                        |
+| Thong tin         | Chi tiet                                        |
 |------------------|-------------------------------------------------|
 | **URL**          | `GET /api/documents/{id}/download-url`          |
-| **Auth**         | ✅ Yêu cầu Bearer token                        |
-| **Content-Type** | Không cần (GET request)                          |
+| **Auth**         | Yeu cau Bearer token                             |
+| **Mo ta**        | Chi owner moi lay duoc URL                       |
 
-#### ➤ Path Parameters
+#### Path Parameters
 
-| Field | Type | Required | Mô tả                                     |
-|-------|------|----------|--------------------------------------------|
-| `id`  | UUID | ✅ Yes   | ID của tài liệu (nhận được khi upload)    |
+| Field | Type | Required | Mo ta                                     |
+|-------|------|----------|-------------------------------------------|
+| `id`  | UUID | Yes      | ID cua tai lieu (nhan duoc khi upload)    |
 
-#### ✅ Response thành công — `200 OK`
+#### Response thanh cong — `200 OK`
 
 ```json
 {
   "statusCode": 200,
   "message": "Download URL generated successfully",
   "data": {
-    "url": "https://sxiyrycwruzxwpqehdmo.storage.supabase.co/storage/v1/s3/documents/users/1/abc123.pdf?X-Amz-Algorithm=..."
+    "url": "https://xxx.supabase.co/storage/v1/s3/documents/users/1/abc123.pdf?X-Amz-Algorithm=..."
   }
 }
 ```
 
-| Field trong `data` | Type   | Mô tả                                               |
-|-------------------|--------|-------------------------------------------------------|
-| `url`             | String | Signed URL để tải file, **hết hạn sau 15 phút**      |
+| Field | Type   | Mo ta                                               |
+|-------|--------|-----------------------------------------------------|
+| `url` | String | Signed URL de tai file, **het han sau 15 phut**      |
 
-> ⚠️ **Lưu ý:** URL có hiệu lực trong **15 phút**. Sau đó cần gọi lại API để lấy URL mới.
+> Luu y: URL co hieu luc trong **15 phut**. Sau do can goi lai API de lay URL moi.
 
-#### ❌ Response lỗi
+#### Response loi
 
-**Tài liệu không tồn tại hoặc không thuộc user hiện tại:**
 ```json
 {
   "statusCode": 400,
@@ -194,21 +303,120 @@ Gửi file dưới dạng `multipart/form-data` với key là `file`.
 
 ---
 
-### 3. Xóa tài liệu
+### 6. Doi ten tai lieu
 
-| Thông tin         | Chi tiết                           |
+| Thong tin         | Chi tiet                                   |
+|------------------|---------------------------------------------|
+| **URL**          | `PUT /api/documents/{id}/rename`            |
+| **Auth**         | Yeu cau Bearer token                        |
+| **Content-Type** | `application/json`                          |
+| **Mo ta**        | Chi owner moi doi ten duoc                  |
+
+#### Path Parameters
+
+| Field | Type | Required | Mo ta               |
+|-------|------|----------|----------------------|
+| `id`  | UUID | Yes      | ID cua tai lieu      |
+
+#### Request Body
+
+```json
+{
+  "newName": "bao-cao-moi"
+}
+```
+
+| Field     | Type   | Required | Mo ta                                              |
+|-----------|--------|----------|----------------------------------------------------|
+| `newName` | String | Yes      | Ten moi (khong can extension, backend tu giu duoi cu) |
+
+> Vi du: File goc la `report.pdf`, gui `"newName": "bao-cao-moi"` -> ket qua: `bao-cao-moi.pdf`
+
+#### Response thanh cong — `200 OK`
+
+```json
+{
+  "statusCode": 200,
+  "message": "Document renamed successfully",
+  "data": {
+    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "originalName": "bao-cao-moi.pdf"
+  }
+}
+```
+
+#### Response loi
+
+| Truong hop            | message                    |
+|-----------------------|----------------------------|
+| Tai lieu khong ton tai | `"Document not found"`    |
+| Ten rong              | `"New name must not be empty"` |
+
+---
+
+### 7. Thay the file tai lieu
+
+| Thong tin         | Chi tiet                                            |
+|------------------|------------------------------------------------------|
+| **URL**          | `PUT /api/documents/{id}/replace`                    |
+| **Auth**         | Yeu cau Bearer token                                 |
+| **Content-Type** | `multipart/form-data`                                |
+| **Mo ta**        | Upload file moi thay the file cu (chi owner)         |
+
+#### Path Parameters
+
+| Field | Type | Required | Mo ta               |
+|-------|------|----------|----------------------|
+| `id`  | UUID | Yes      | ID cua tai lieu      |
+
+#### Request
+
+| Field  | Type           | Required | Mo ta                |
+|-------|----------------|----------|----------------------|
+| `file` | MultipartFile | Yes      | File moi thay the    |
+
+> Rang buoc file giong nhu upload (pdf/doc/docx, max 10MB, kiem tra magic bytes).
+
+#### Response thanh cong — `200 OK`
+
+```json
+{
+  "statusCode": 200,
+  "message": "Document replaced successfully",
+  "data": {
+    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "originalName": "report-v2.pdf",
+    "contentType": "application/pdf",
+    "size": 310000
+  }
+}
+```
+
+#### Response loi
+
+| Truong hop            | message                              |
+|-----------------------|--------------------------------------|
+| Tai lieu khong ton tai | `"Document not found"`              |
+| File rong             | `"File is empty"`                    |
+| Sai dinh dang         | `"Only pdf, doc, docx are allowed"` |
+
+---
+
+### 8. Xoa tai lieu
+
+| Thong tin         | Chi tiet                           |
 |------------------|------------------------------------|
 | **URL**          | `DELETE /api/documents/{id}`       |
-| **Auth**         | ✅ Yêu cầu Bearer token           |
-| **Content-Type** | Không cần (DELETE request)          |
+| **Auth**         | Yeu cau Bearer token               |
+| **Mo ta**        | Chi owner moi xoa duoc             |
 
-#### ➤ Path Parameters
+#### Path Parameters
 
-| Field | Type | Required | Mô tả                                     |
-|-------|------|----------|--------------------------------------------|
-| `id`  | UUID | ✅ Yes   | ID của tài liệu cần xóa                   |
+| Field | Type | Required | Mo ta                     |
+|-------|------|----------|---------------------------|
+| `id`  | UUID | Yes      | ID cua tai lieu can xoa   |
 
-#### ✅ Response thành công — `200 OK`
+#### Response thanh cong — `200 OK`
 
 ```json
 {
@@ -218,9 +426,8 @@ Gửi file dưới dạng `multipart/form-data` với key là `file`.
 }
 ```
 
-#### ❌ Response lỗi
+#### Response loi
 
-**Tài liệu không tồn tại hoặc không thuộc user hiện tại:**
 ```json
 {
   "statusCode": 400,
@@ -231,101 +438,218 @@ Gửi file dưới dạng `multipart/form-data` với key là `file`.
 
 ---
 
-## 🧪 Hướng dẫn test trên Postman
+### 9. An/hien tai lieu (Toggle Visibility)
 
-### Bước 0: Lấy JWT Token
+| Thong tin         | Chi tiet                                        |
+|------------------|-------------------------------------------------|
+| **URL**          | `PUT /api/documents/{id}/visibility`            |
+| **Auth**         | Yeu cau Bearer token                             |
+| **Content-Type** | `application/json`                               |
+| **Mo ta**        | Chi owner moi bat/tat an tai lieu                |
 
-1. Gửi request đăng nhập:
+#### Path Parameters
+
+| Field | Type | Required | Mo ta               |
+|-------|------|----------|----------------------|
+| `id`  | UUID | Yes      | ID cua tai lieu      |
+
+#### Request Body
+
+```json
+{
+  "visible": false
+}
+```
+
+| Field     | Type    | Required | Mo ta                                    |
+|-----------|---------|----------|------------------------------------------|
+| `visible` | boolean | Yes      | `true` = cong khai, `false` = an         |
+
+#### Response thanh cong — `200 OK`
+
+**An tai lieu:**
+```json
+{
+  "statusCode": 200,
+  "message": "Document is now hidden",
+  "data": {
+    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "visible": false
+  }
+}
+```
+
+**Hien tai lieu:**
+```json
+{
+  "statusCode": 200,
+  "message": "Document is now visible",
+  "data": {
+    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "visible": true
+  }
+}
+```
+
+#### Response loi
+
+```json
+{
+  "statusCode": 400,
+  "message": "Document not found",
+  "data": null
+}
+```
+
+---
+
+## Bang tom tat API
+
+| #  | Method   | URL                                | Quyen        | Mo ta                              |
+|----|----------|------------------------------------|-------------|-------------------------------------|
+| 1  | `GET`    | `/api/documents`                   | Moi user    | Lay tat ca tai lieu (chi visible)   |
+| 2  | `GET`    | `/api/documents/my`                | Moi user    | Lay tai lieu cua toi (ca an/hien)   |
+| 3  | `GET`    | `/api/documents/{id}`              | Chi owner   | Chi tiet 1 tai lieu                 |
+| 4  | `POST`   | `/api/documents`                   | Moi user    | Upload tai lieu                     |
+| 5  | `GET`    | `/api/documents/{id}/download-url` | Chi owner   | Lay signed URL download             |
+| 6  | `PUT`    | `/api/documents/{id}/rename`       | Chi owner   | Doi ten tai lieu                    |
+| 7  | `PUT`    | `/api/documents/{id}/replace`      | Chi owner   | Thay the file                       |
+| 8  | `DELETE` | `/api/documents/{id}`              | Chi owner   | Xoa tai lieu                        |
+| 9  | `PUT`    | `/api/documents/{id}/visibility`   | Chi owner   | An/hien tai lieu                    |
+
+---
+
+## Huong dan test tren Postman
+
+### Buoc 0: Lay JWT Token
+
+1. Gui request dang nhap:
    - **Method:** `POST`
    - **URL:** `http://localhost:8080/api/auth/login`
-   - **Body** → `raw` → `JSON`:
+   - **Body** -> `raw` -> `JSON`:
      ```json
      {
        "username": "johndoe",
        "password": "secret123"
      }
      ```
-2. Copy giá trị `token` từ response.
+2. Copy gia tri `token` tu response.
 
-### Bước 1: Upload tài liệu
+### Buoc 1: Xem tat ca tai lieu
 
-1. Tạo request mới trong Postman:
-   - **Method:** `POST`
-   - **URL:** `http://localhost:8080/api/documents`
-2. Tab **Authorization**:
-   - Type: `Bearer Token`
-   - Token: `<paste token ở bước 0>`
-3. Tab **Body**:
-   - Chọn **form-data**
-   - Thêm key: `file`
-   - Chuyển type sang **File** (click dropdown bên trái key)
-   - Chọn file PDF/DOC/DOCX từ máy (≤ 10MB)
-4. Click **Send**
-5. Response thành công sẽ trả về `id` — **lưu lại giá trị này** để test các bước tiếp theo.
+- **Method:** `GET`
+- **URL:** `http://localhost:8080/api/documents`
+- **Authorization:** Bearer Token -> paste token
 
-> 📸 **Lưu ý Postman:** Khi chọn `form-data` và type `File`, Postman tự động set `Content-Type: multipart/form-data`. **Không cần** set thêm header `Content-Type` thủ công.
+### Buoc 2: Xem tai lieu cua toi
 
-### Bước 2: Lấy Download URL
+- **Method:** `GET`
+- **URL:** `http://localhost:8080/api/documents/my`
+- **Authorization:** Bearer Token -> paste token
 
-1. Tạo request mới:
-   - **Method:** `GET`
-   - **URL:** `http://localhost:8080/api/documents/{id}/download-url`
-   - Thay `{id}` bằng UUID nhận được ở bước 1 (ví dụ: `http://localhost:8080/api/documents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/download-url`)
-2. Tab **Authorization**:
-   - Type: `Bearer Token`
-   - Token: `<paste token>`
-3. Click **Send**
-4. Copy URL từ `data.url` trong response
-5. **Mở URL đó trên trình duyệt** → File sẽ được tải xuống tự động
+### Buoc 3: Upload tai lieu
 
-### Bước 3: Xóa tài liệu
+1. **Method:** `POST`
+2. **URL:** `http://localhost:8080/api/documents`
+3. **Authorization:** Bearer Token -> paste token
+4. **Body:** form-data -> key: `file`, type: **File** -> chon file PDF/DOC/DOCX (max 10MB)
+5. Luu lai `id` tu response de test cac buoc tiep.
 
-1. Tạo request mới:
-   - **Method:** `DELETE`
-   - **URL:** `http://localhost:8080/api/documents/{id}`
-   - Thay `{id}` bằng UUID của tài liệu cần xóa
-2. Tab **Authorization**:
-   - Type: `Bearer Token`
-   - Token: `<paste token>`
-3. Click **Send**
-4. Response thành công: `"Document deleted successfully"`
+### Buoc 4: Xem chi tiet tai lieu
 
-### 🔴 Test các trường hợp lỗi
+- **Method:** `GET`
+- **URL:** `http://localhost:8080/api/documents/{id}`
+- Thay `{id}` bang UUID nhan duoc o buoc 3
 
-| Test case                        | Cách test                                            | Expected                              |
+### Buoc 5: Lay Download URL
+
+- **Method:** `GET`
+- **URL:** `http://localhost:8080/api/documents/{id}/download-url`
+- Copy URL tu `data.url` -> mo tren trinh duyet -> file tu tai xuong
+
+### Buoc 6: Doi ten tai lieu
+
+- **Method:** `PUT`
+- **URL:** `http://localhost:8080/api/documents/{id}/rename`
+- **Body:** raw -> JSON:
+  ```json
+  {
+    "newName": "ten-moi"
+  }
+  ```
+
+### Buoc 7: Thay the file
+
+- **Method:** `PUT`
+- **URL:** `http://localhost:8080/api/documents/{id}/replace`
+- **Body:** form-data -> key: `file`, type: **File** -> chon file moi
+
+### Buoc 8: An tai lieu
+
+- **Method:** `PUT`
+- **URL:** `http://localhost:8080/api/documents/{id}/visibility`
+- **Body:** raw -> JSON:
+  ```json
+  {
+    "visible": false
+  }
+  ```
+- Sau khi an, goi lai `GET /api/documents` se khong thay tai lieu nay nua
+- Goi `GET /api/documents/my` van thay (voi `visible: false`)
+
+### Buoc 9: Xoa tai lieu
+
+- **Method:** `DELETE`
+- **URL:** `http://localhost:8080/api/documents/{id}`
+
+### Test cac truong hop loi
+
+| Test case                        | Cach test                                            | Expected                              |
 |---------------------------------|------------------------------------------------------|---------------------------------------|
-| Upload file rỗng                | Gửi POST không có file                               | `400` — "File is empty"              |
-| Upload file quá 10MB            | Chọn file > 10MB                                     | `400` — "File exceeds max size"      |
-| Upload file .txt                | Chọn file text                                       | `400` — "Only pdf, doc, docx are allowed" |
-| Upload file đổi đuôi giả       | Đổi tên file .txt thành .pdf rồi upload             | `400` — "File content is not a valid PDF" |
-| Download tài liệu không tồn tại | GET với UUID ngẫu nhiên                             | `400` — "Document not found"         |
-| Download tài liệu người khác   | Login user A, dùng document ID của user B            | `400` — "Document not found"         |
-| Xóa tài liệu không tồn tại    | DELETE với UUID ngẫu nhiên                           | `400` — "Document not found"         |
-| Không có token                  | Gửi request không có Authorization header            | `401` hoặc `403`                     |
+| Upload file rong                | Gui POST khong co file                               | `400` — "File is empty"              |
+| Upload file qua 10MB            | Chon file > 10MB                                     | `400` — "File exceeds max size"      |
+| Upload file .txt                | Chon file text                                       | `400` — "Only pdf, doc, docx are allowed" |
+| Upload file doi duoi gia        | Doi ten file .txt thanh .pdf roi upload              | `400` — "File content is not a valid PDF" |
+| Xem chi tiet tai lieu nguoi khac| Login user A, GET /api/documents/{id cua user B}     | `400` — "Document not found"         |
+| Download tai lieu nguoi khac    | Login user A, dung document ID cua user B            | `400` — "Document not found"         |
+| Doi ten tai lieu nguoi khac     | Login user A, PUT rename voi ID cua user B           | `400` — "Document not found"         |
+| Thay the file nguoi khac        | Login user A, PUT replace voi ID cua user B          | `400` — "Document not found"         |
+| Xoa tai lieu nguoi khac         | Login user A, DELETE voi ID cua user B               | `400` — "Document not found"         |
+| Doi ten rong                    | Gui `{"newName": ""}`                                | `400` — "New name must not be empty" |
+| An tai lieu nguoi khac          | Login user A, PUT visibility voi ID cua user B       | `400` — "Document not found"         |
+| Tai lieu an khong hien o all    | An tai lieu, goi GET /api/documents                  | Tai lieu khong co trong danh sach    |
+| Tai lieu an van hien o my       | An tai lieu, goi GET /api/documents/my               | Tai lieu van co voi `visible: false` |
+| Khong co token                  | Gui request khong co Authorization header            | `401` hoac `403`                     |
 
 ---
 
-## 📦 Ví dụ code tích hợp cho Frontend (React + Axios + TypeScript)
+## Vi du code tich hop cho Frontend (React + Axios + TypeScript)
 
-### Service Layer
+### Interfaces
 
 ```typescript
-// documentService.ts
-import axios from 'axios';
-
-const BASE_URL = 'http://localhost:8080/api/documents';
-
-// Lấy token từ localStorage
-const getAuthHeader = () => ({
-  Authorization: `Bearer ${localStorage.getItem('token')}`,
-});
-
-// ===== Interfaces =====
-
 interface BaseResponse<T = any> {
   statusCode: number;
   message: string;
   data: T;
+}
+
+interface DocumentItem {
+  id: string;
+  originalName: string;
+  contentType: string;
+  size: number;
+  visible: boolean;
+  createdAt: string;
+}
+
+interface DocumentItemAll {
+  id: string;
+  originalName: string;
+  contentType: string;
+  size: number;
+  ownerId: number;
+  createdAt: string;
 }
 
 interface DocumentUploadData {
@@ -339,242 +663,158 @@ interface DownloadUrlData {
   url: string;
 }
 
-// ===== API Calls =====
+interface RenameData {
+  id: string;
+  originalName: string;
+}
 
-/**
- * Upload tài liệu (pdf, doc, docx — tối đa 10MB)
- */
+interface VisibilityData {
+  id: string;
+  visible: boolean;
+}
+```
+
+### Service Layer
+
+```typescript
+// documentService.ts
+import axios from 'axios';
+
+const BASE_URL = 'http://localhost:8080/api/documents';
+
+const getAuthHeader = () => ({
+  Authorization: `Bearer ${localStorage.getItem('token')}`,
+});
+
+/** Lay tat ca tai lieu */
+export const getAllDocuments = async (): Promise<BaseResponse<DocumentItemAll[]>> => {
+  const response = await axios.get(BASE_URL, { headers: getAuthHeader() });
+  return response.data;
+};
+
+/** Lay tai lieu cua toi */
+export const getMyDocuments = async (): Promise<BaseResponse<DocumentItem[]>> => {
+  const response = await axios.get(`${BASE_URL}/my`, { headers: getAuthHeader() });
+  return response.data;
+};
+
+/** Lay chi tiet 1 tai lieu */
+export const getDocument = async (id: string): Promise<BaseResponse<DocumentItem>> => {
+  const response = await axios.get(`${BASE_URL}/${id}`, { headers: getAuthHeader() });
+  return response.data;
+};
+
+/** Upload tai lieu (pdf, doc, docx — toi da 10MB) */
 export const uploadDocument = async (file: File): Promise<BaseResponse<DocumentUploadData>> => {
   const formData = new FormData();
   formData.append('file', file);
-
-  const response = await axios.post<BaseResponse<DocumentUploadData>>(BASE_URL, formData, {
-    headers: {
-      ...getAuthHeader(),
-      'Content-Type': 'multipart/form-data',
-    },
+  const response = await axios.post(BASE_URL, formData, {
+    headers: { ...getAuthHeader(), 'Content-Type': 'multipart/form-data' },
   });
   return response.data;
 };
 
-/**
- * Lấy signed URL để tải file (hết hạn sau 15 phút)
- */
-export const getDownloadUrl = async (documentId: string): Promise<BaseResponse<DownloadUrlData>> => {
-  const response = await axios.get<BaseResponse<DownloadUrlData>>(
-    `${BASE_URL}/${documentId}/download-url`,
-    { headers: getAuthHeader() }
-  );
+/** Lay signed URL de tai file (het han sau 15 phut) */
+export const getDownloadUrl = async (id: string): Promise<BaseResponse<DownloadUrlData>> => {
+  const response = await axios.get(`${BASE_URL}/${id}/download-url`, { headers: getAuthHeader() });
   return response.data;
 };
 
-/**
- * Xóa tài liệu
- */
-export const deleteDocument = async (documentId: string): Promise<BaseResponse<null>> => {
-  const response = await axios.delete<BaseResponse<null>>(
-    `${BASE_URL}/${documentId}`,
-    { headers: getAuthHeader() }
-  );
+/** Doi ten tai lieu */
+export const renameDocument = async (id: string, newName: string): Promise<BaseResponse<RenameData>> => {
+  const response = await axios.put(`${BASE_URL}/${id}/rename`, { newName }, { headers: getAuthHeader() });
   return response.data;
 };
-```
 
-### Component ví dụ — Upload
-
-```tsx
-// DocumentUpload.tsx
-import React, { useState } from 'react';
-import { uploadDocument } from './documentService';
-
-const ALLOWED_TYPES = [
-  'application/pdf',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-];
-const MAX_SIZE = 10 * 1024 * 1024; // 10MB
-
-const DocumentUpload: React.FC = () => {
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
-
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Validate phía client trước khi gửi
-    if (!ALLOWED_TYPES.includes(file.type)) {
-      setMessage('Chỉ chấp nhận file PDF, DOC, DOCX');
-      return;
-    }
-    if (file.size > MAX_SIZE) {
-      setMessage('File không được vượt quá 10MB');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const result = await uploadDocument(file);
-      if (result.statusCode === 200) {
-        setMessage(`Upload thành công: ${result.data.originalName}`);
-        // Lưu result.data.id để dùng cho download/delete
-      } else {
-        setMessage(`Lỗi: ${result.message}`);
-      }
-    } catch (error: any) {
-      setMessage(error.response?.data?.message || 'Upload thất bại');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div>
-      <input
-        type="file"
-        accept=".pdf,.doc,.docx"
-        onChange={handleUpload}
-        disabled={loading}
-      />
-      {loading && <p>Đang upload...</p>}
-      {message && <p>{message}</p>}
-    </div>
-  );
+/** Thay the file tai lieu */
+export const replaceDocument = async (id: string, file: File): Promise<BaseResponse<DocumentUploadData>> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await axios.put(`${BASE_URL}/${id}/replace`, formData, {
+    headers: { ...getAuthHeader(), 'Content-Type': 'multipart/form-data' },
+  });
+  return response.data;
 };
 
-export default DocumentUpload;
-```
-
-### Component ví dụ — Download
-
-```tsx
-// DocumentDownload.tsx
-import React from 'react';
-import { getDownloadUrl } from './documentService';
-
-interface Props {
-  documentId: string;
-  fileName: string;
-}
-
-const DocumentDownload: React.FC<Props> = ({ documentId, fileName }) => {
-  const handleDownload = async () => {
-    try {
-      const result = await getDownloadUrl(documentId);
-      if (result.statusCode === 200) {
-        // Mở signed URL → trình duyệt tự tải file
-        window.open(result.data.url, '_blank');
-      } else {
-        alert(`Lỗi: ${result.message}`);
-      }
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Không thể tải file');
-    }
-  };
-
-  return (
-    <button onClick={handleDownload}>
-      📥 Tải {fileName}
-    </button>
-  );
+/** An/hien tai lieu */
+export const toggleVisibility = async (id: string, visible: boolean): Promise<BaseResponse<VisibilityData>> => {
+  const response = await axios.put(`${BASE_URL}/${id}/visibility`, { visible }, { headers: getAuthHeader() });
+  return response.data;
 };
 
-export default DocumentDownload;
+/** Xoa tai lieu */
+export const deleteDocument = async (id: string): Promise<BaseResponse<null>> => {
+  const response = await axios.delete(`${BASE_URL}/${id}`, { headers: getAuthHeader() });
+  return response.data;
+};
 ```
 
 ---
 
-## 🔄 Luồng xử lý gợi ý (Recommended Flow)
+## Validation phia Frontend (khuyen nghi)
 
-### Upload
+Validate truoc khi gui request de cai thien trai nghiem nguoi dung:
 
-```
-1. User chọn file → Frontend validate (type + size) trước khi gửi
-2. POST /api/documents (multipart/form-data)
-3. Thành công (statusCode=200):
-   - Hiển thị thông tin file (tên, kích thước)
-   - Lưu document ID để dùng cho download/delete
-4. Thất bại (statusCode=400):
-   - Hiển thị message lỗi cho user
-```
-
-### Download
-
-```
-1. User click nút "Tải xuống"
-2. GET /api/documents/{id}/download-url
-3. Thành công (statusCode=200):
-   - Mở data.url bằng window.open() hoặc tạo thẻ <a> tự click
-   - File tự động tải xuống
-4. Thất bại (statusCode=400):
-   - Hiển thị thông báo lỗi
-```
-
-### Delete
-
-```
-1. User click nút "Xóa" → Hiện confirm dialog
-2. DELETE /api/documents/{id}
-3. Thành công (statusCode=200):
-   - Xóa tài liệu khỏi danh sách hiển thị
-   - Hiện thông báo "Đã xóa thành công"
-4. Thất bại (statusCode=400):
-   - Hiển thị thông báo lỗi
-```
-
----
-
-## 📋 Validation phía Frontend (khuyến nghị)
-
-Validate trước khi gửi request để cải thiện trải nghiệm người dùng:
-
-| Ràng buộc            | Rule                                                                 | Thông báo lỗi                             |
+| Rang buoc            | Rule                                                                 | Thong bao loi                             |
 |---------------------|----------------------------------------------------------------------|-------------------------------------------|
-| File bắt buộc        | File không được rỗng                                                 | "Vui lòng chọn file"                     |
-| Định dạng file       | Chỉ `.pdf`, `.doc`, `.docx`                                          | "Chỉ chấp nhận file PDF, DOC, DOCX"      |
-| Kích thước file      | ≤ 10 MB                                                              | "File không được vượt quá 10MB"           |
-| MIME type            | `application/pdf`, `application/msword`, `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | "Loại file không hợp lệ" |
+| File bat buoc        | File khong duoc rong                                                 | "Vui long chon file"                     |
+| Dinh dang file       | Chi `.pdf`, `.doc`, `.docx`                                          | "Chi chap nhan file PDF, DOC, DOCX"      |
+| Kich thuoc file      | <= 10 MB                                                             | "File khong duoc vuot qua 10MB"           |
+| MIME type            | `application/pdf`, `application/msword`, `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | "Loai file khong hop le" |
 
-> 💡 **Tip:** Sử dụng thuộc tính `accept=".pdf,.doc,.docx"` trên thẻ `<input type="file">` để giới hạn file picker của trình duyệt.
+> **Tip:** Su dung thuoc tinh `accept=".pdf,.doc,.docx"` tren the `<input type="file">` de gioi han file picker cua trinh duyet.
 
 ---
 
-## 🛡️ Bảo mật
+## Bao mat
 
-| Tính năng                     | Mô tả                                                                 |
+| Tinh nang                     | Mo ta                                                                 |
 |------------------------------|-------------------------------------------------------------------------|
-| **Owner-based access**       | User chỉ có thể download/xóa tài liệu của chính mình                  |
-| **Signed URL**               | URL tải file có thời hạn 15 phút, không thể dùng lại sau khi hết hạn  |
-| **Magic bytes validation**   | Backend kiểm tra nội dung thực sự của file, chống giả mạo đuôi file   |
-| **File extension whitelist** | Chỉ chấp nhận pdf, doc, docx                                           |
-| **Content-Type validation**  | Kiểm tra MIME type phải khớp với định dạng cho phép                    |
-| **Max file size**            | Giới hạn 10MB ở cả Spring Multipart config và business logic           |
+| **Owner-based access**       | User chi co the xem chi tiet/download/sua/xoa tai lieu cua chinh minh   |
+| **Visibility control**       | Owner co the an tai lieu — tai lieu an khong hien trong danh sach chung |
+| **Public list**              | Moi user deu xem duoc danh sach tai lieu cong khai (visible = true)    |
+| **Signed URL**               | URL tai file co thoi han 15 phut, khong the dung lai sau khi het han   |
+| **Magic bytes validation**   | Backend kiem tra noi dung thuc su cua file, chong gia mao duoi file    |
+| **File extension whitelist** | Chi chap nhan pdf, doc, docx                                           |
+| **Content-Type validation**  | Kiem tra MIME type phai khop voi dinh dang cho phep                     |
+| **Max file size**            | Gioi han 10MB o ca Spring Multipart config va business logic            |
 
 ---
 
-## ❓ FAQ
+## FAQ
 
-**Q: Signed URL hết hạn thì làm gì?**  
-A: Gọi lại `GET /api/documents/{id}/download-url` để lấy URL mới. URL có hiệu lực 15 phút.
+**Q: Signed URL het han thi lam gi?**
+A: Goi lai `GET /api/documents/{id}/download-url` de lay URL moi. URL co hieu luc 15 phut.
 
-**Q: User A có thể tải file của User B không?**  
-A: Không. API kiểm tra `ownerId` — chỉ owner mới có thể truy cập tài liệu của mình.
+**Q: User A co the tai/sua/xoa file cua User B khong?**
+A: Khong. API kiem tra `ownerId` — chi owner moi co the thao tac tai lieu cua minh. Nhung moi user deu xem duoc danh sach tat ca tai lieu.
 
-**Q: Có thể upload nhiều file cùng lúc không?**  
-A: Hiện tại mỗi request chỉ upload 1 file. Frontend có thể gửi nhiều request song song.
+**Q: Co the upload nhieu file cung luc khong?**
+A: Hien tai moi request chi upload 1 file. Frontend co the gui nhieu request song song.
 
-**Q: File được lưu ở đâu?**  
-A: File lưu trên Supabase Storage (S3-compatible). Metadata (tên, size, owner...) lưu trong PostgreSQL.
+**Q: File duoc luu o dau?**
+A: File luu tren Supabase Storage (S3-compatible). Metadata (ten, size, owner...) luu trong PostgreSQL.
 
-**Q: Có thể upload file .txt, .jpg, .png không?**  
-A: Không. Chỉ chấp nhận `.pdf`, `.doc`, `.docx`.
+**Q: Co the upload file .txt, .jpg, .png khong?**
+A: Khong. Chi chap nhan `.pdf`, `.doc`, `.docx`.
 
-**Q: Khi xóa tài liệu thì file trên storage có bị xóa không?**  
-A: Có. API xóa cả file trên S3 lẫn metadata trong database.
+**Q: Khi xoa tai lieu thi file tren storage co bi xoa khong?**
+A: Co. API xoa ca file tren S3 lan metadata trong database.
+
+**Q: Doi ten tai lieu co can gui kem extension khong?**
+A: Khong can. Backend tu dong giu extension goc. Vi du: file goc la `report.pdf`, gui `"newName": "bao-cao"` -> ket qua: `bao-cao.pdf`.
+
+**Q: Thay the file co thay doi ID khong?**
+A: Khong. ID va URL giu nguyen, chi noi dung file va metadata (ten, size, content-type) duoc cap nhat.
+
+**Q: An tai lieu thi nguoi khac con thay khong?**
+A: Khong. Tai lieu bi an (`visible = false`) se khong hien trong `GET /api/documents`. Chi owner moi thay trong `GET /api/documents/my`.
+
+**Q: Tai lieu moi upload mac dinh la an hay hien?**
+A: Mac dinh la **hien** (`visible = true`). Owner can an thu cong bang `PUT /api/documents/{id}/visibility`.
 
 ---
 
-## 📞 Liên hệ
+## Lien he
 
-Nếu có thắc mắc về API, vui lòng liên hệ **Backend Team**.
-
+Neu co thac mac ve API, vui long lien he **Backend Team**.
