@@ -63,6 +63,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/documents").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/documents/{id}/metadata").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/documents/{id}/pages/{pageNumber}").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/tags").permitAll()
 
                         // LƯU Ý QUAN TRỌNG: Quy tắc cho '/my' bắt buộc phải xếp TRƯỚC '/{id}' 
                         // để Spring Security không bắt nhầm chữ 'my' thành tham số 'id'
