@@ -17,20 +17,11 @@ public class CentralException {
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<?> handleAccessDeniedException(AccessDeniedException e) {
         BaseResponse response = new BaseResponse();
-        response.setStatusCode(403);
         response.setMessage(e.getMessage());
         response.setData(null);
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
     }
 
-    @ExceptionHandler(DataNotFoundException.class)
-    public ResponseEntity<?> handleDataNotFoundException(DataNotFoundException e) {
-        BaseResponse response = new BaseResponse();
-        response.setStatusCode(404);
-        response.setMessage(e.getMessage());
-        response.setData(null);
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
-    }
 
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<?> handleBadCredentials(BadCredentialsException e) {
