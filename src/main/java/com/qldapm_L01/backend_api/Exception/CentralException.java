@@ -1,7 +1,9 @@
 package com.qldapm_L01.backend_api.Exception;
 
 import com.qldapm_L01.backend_api.Payload.Response.BaseResponse;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
@@ -12,13 +14,22 @@ import java.util.stream.Collectors;
 @ControllerAdvice
 public class CentralException {
 
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<?> handleAccessDeniedException(AccessDeniedException e) {
+        BaseResponse response = new BaseResponse();
+        response.setStatusCode(403);
+        response.setMessage(e.getMessage());
+        response.setData(null);
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+    }
+
     @ExceptionHandler(DataNotFoundException.class)
     public ResponseEntity<?> handleDataNotFoundException(DataNotFoundException e) {
         BaseResponse response = new BaseResponse();
         response.setStatusCode(404);
         response.setMessage(e.getMessage());
         response.setData(null);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
     }
 
     @ExceptionHandler(BadCredentialsException.class)
@@ -27,7 +38,7 @@ public class CentralException {
         response.setStatusCode(401);
         response.setMessage("Invalid username or password");
         response.setData(null);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
@@ -36,16 +47,16 @@ public class CentralException {
         response.setStatusCode(400);
         response.setMessage(e.getMessage());
         response.setData(null);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }
 
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<?> handleRuntimeException(RuntimeException e) {
         BaseResponse response = new BaseResponse();
-        response.setStatusCode(400);
-        response.setMessage(e.getMessage());
+        response.setStatusCode(500);
+        response.setMessage("Internal server error");
         response.setData(null);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -57,6 +68,6 @@ public class CentralException {
         response.setStatusCode(400);
         response.setMessage(message);
         response.setData(null);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }
 }

@@ -53,9 +53,26 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .authorizeHttpRequests(auth -> auth
+                        // 1. Cấu hình cho Cơ chế CORS (Pre-flight requests)
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
+                        // 2. Nhóm API Xác thực, cấp mới Token
                         .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/api/documents/**").permitAll()
+
+                        // 3. Nhóm Public API Tài liệu (Khách vãng lai được mở xem danh sách và thông tin file)
+                        .requestMatchers(HttpMethod.GET, "/api/documents").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/documents/{id}/metadata").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/documents/{id}/pages/{pageNumber}").permitAll()
+
+                        // LƯU Ý QUAN TRỌNG: Quy tắc cho '/my' bắt buộc phải xếp TRƯỚC '/{id}' 
+                        // để Spring Security không bắt nhầm chữ 'my' thành tham số 'id'
+                        .requestMatchers(HttpMethod.GET, "/api/documents/my").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/documents/{id}").permitAll()
+
+                        // 4. Nhóm API Tài liệu Yêu cầu Đăng nhập (POST, PUT, DELETE, download-url, v.v...)
+                        .requestMatchers("/api/documents/**").authenticated()
+
+                        // 5. Block mặc định cho tất cả các endpoint khác chưa khai báo
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(session -> session
